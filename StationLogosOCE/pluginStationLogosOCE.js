@@ -1304,6 +1304,8 @@ function LocalStationInfoField() {
     documentLocal.className = 'panel-33 hover-brighten tooltip-station-logos';
     if (/Mobi|Android|iPhone|iPad|iPod|Opera Mini/i.test(navigator.userAgent) && window.matchMedia("(orientation: portrait)").matches || window.innerWidth <= 768) {
         documentLocal.style.backgroundColor = "transparent";
+    } else {
+        documentLocal.style.backgroundColor = "";
     }
 
     isLocalActive = true; // Tooltip code normally here
