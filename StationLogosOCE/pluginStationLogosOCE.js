@@ -1,5 +1,5 @@
 /*
-    Station Logos OCE + Station Info for no RDS v1.3.9 by AAD
+    Station Logos OCE + Station Info for no RDS v1.4.0 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Station-Logos-OCE
 
     https://github.com/Highpoint2000/webserver-station-logos
@@ -18,13 +18,15 @@ const PRIORITISE_SVG_LOCAL = false;             // Display 'svg' file if both 's
 const LOGO_EFFECT = 'fade-animation';           // imageRotate, curtain, fade-animation, fade-grayscale
 const LOGO_TRANSITION_EFFECT = 'fade';          // none, flip, flip-vertical, fade, slide, zoom, blur
 const SIGNAL_DIM_THRESHOLD = -103;              // Value in dBm
-const SIGNAL_HOLD_THRESHOLD = -101;             // Value in dBm
+const SIGNAL_HOLD_THRESHOLD = -101;             // Value in dBm - used by INCLUDE_LOCAL_STATION_INFO
+const CCI_HOLD_THRESHOLD = 99;                  // Value in % - used by INCLUDE_LOCAL_STATION_INFO
+const IS_TEF_RADIO = false;                     // Enable if TEF radio firmware is used
 const HIDE_STEREO_ICON_MOBILE = false;          // Could be useful if a Mono/Stereo/MPX lock is needed otherwise unlikely required
 const DECEMBER_SANTA_HAT_LOGO = true;           // Santa hat as default logo during December
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const pluginVersion = '1.3.9';
+const pluginVersion = '1.4.0';
 const pluginName = "Station Logos OCE";
 const pluginHomepageUrl = "https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Station-Logos-OCE";
 const pluginUpdateUrl = "https://raw.githubusercontent.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Station-Logos-OCE/refs/heads/main/StationLogosOCE/pluginStationLogosOCE.js";
@@ -34,6 +36,32 @@ const CHECK_FOR_UPDATES = true;
 const basePath = window.location.pathname.replace(/\/?$/, '/');
 const logosPath = `${basePath}logos`.replace(/\/+/g, '/');          // /logos
 const apiPath = `${basePath}logos-data`.replace(/\/+/g, '/');       // /logos-data
+
+let freqData, logoImage, logoLocal, mobileRefresh, mobileRefreshNew;
+let intervalDividerPrimary = 5;
+let intervalDividerSecondary = 1.25;
+let firstLocalstationRun = false;
+let firstLocalstationRunCounter = 0;
+let firstLocalstationRunCounterMax = 10;
+let logoRotate = false;
+let logoPIPSVisible = false;
+let signalHoldMax = 10 * ((intervalDividerPrimary / intervalDividerSecondary) / 1.6666); // seconds
+let signalHold = 0; // seconds
+let signalDimMax = 30 * ((intervalDividerPrimary / intervalDividerSecondary) / 1.6666); // seconds
+let signalDim = signalDimMax; // seconds
+let cciValue = 100;
+let localStationDelayCounterMax = DELAY_LOCAL_STATION_INFO ? 8 : 0;
+let localStationDelayCounter = 0;
+let setIntervalMain;
+let setTimeoutMain;
+let freq = 0;
+let dataFreq = 0;
+let lastLocalAntenna = 0;
+let logoLocalAntenna = null; // Antenna the currently displayed local logo belongs to
+let isLocalActive = false;
+let logoRotateStartTime = 0;
+let cciError = false;
+let debug = false;
 
 // Right-click (or long-press) the logo to override LOGO_EFFECT/LOGO_TRANSITION_EFFECT, saved to localStorage.
 let currentLogoEffect = LOGO_EFFECT;
@@ -606,29 +634,6 @@ function transitionLogoChange(logoImage, newSrc, applyChanges) {
     });
 }
 
-let freqData, logoImage, logoLocal, mobileRefresh, mobileRefreshNew;
-let intervalDividerPrimary = 5;
-let intervalDividerSecondary = 1.25;
-let firstLocalstationRun = false;
-let firstLocalstationRunCounter = 0;
-let firstLocalstationRunCounterMax = 10;
-let logoRotate = false;
-let logoPIPSVisible = false;
-let signalHoldMax = 10 * ((intervalDividerPrimary / intervalDividerSecondary) / 1.6666); // seconds
-let signalHold = 0; // seconds
-let signalDimMax = 30 * ((intervalDividerPrimary / intervalDividerSecondary) / 1.6666); // seconds
-let signalDim = signalDimMax; // seconds
-let localStationDelayCounterMax = DELAY_LOCAL_STATION_INFO ? 8 : 0;
-let localStationDelayCounter = localStationDelayCounterMax;
-let setIntervalMain;
-let setTimeoutMain;
-let freq = 0;
-let dataFreq = 0;
-let lastLocalAntenna = 0;
-let isLocalActive = false;
-let logoRotateStartTime = 0;
-let debug = false;
-
 const optionSaveAntenna = (!!document.getElementById('data-ant'));
 
 // Function to get the current antenna value
@@ -757,7 +762,36 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (now - lastProcessedTime < TIMEOUT_DURATION) return;
                 lastProcessedTime = now;
 
-                const { ant } = JSON.parse(event.data);
+                const { ant, sigRaw } = JSON.parse(event.data);
+
+                // Get CCI value
+                if (sigRaw) {
+                    const sigRawValues = sigRaw.split(',');
+                    if (sigRawValues.length >= 2) {
+                        function smoothInterpolation(sigRawValue) {
+                            if (sigRawValue <= 3) {
+                              return 0;
+                            } else if (sigRawValue >= 40) {
+                              return 100;
+                            }
+
+                            const normValue = (sigRawValue - 3) / (40 - 3);
+                            const smoothValue = Math.pow(normValue, 1);
+                            const scaledValue = smoothValue * 100;
+                            return parseInt(scaledValue);
+                        }
+
+                        cciValue = Number(sigRawValues[1]);
+
+                        if (IS_TEF_RADIO) cciValue = smoothInterpolation(cciValue);
+                    } else {
+                        cciValue = 100;
+                        if (!cciError) console.error(`[${pluginName}] CCI sigRaw data format invalid`);
+                        cciError = true;
+                    }
+                } else {
+                    cciValue = 100;
+                }
 
                 if (!previousAnt) previousAnt = ant;
 
@@ -960,7 +994,7 @@ function CheckPIorFreq() {
       ant: customAnt
     } = matchedEntry;
 
-	signalHold = (signalCalc >= SIGNAL_HOLD_THRESHOLD) ? parseInt(signalHoldMax) : signalHold - 1; // Cooldown before hiding local station info
+	signalHold = (signalCalc >= SIGNAL_HOLD_THRESHOLD && cciValue <= CCI_HOLD_THRESHOLD) ? parseInt(signalHoldMax) : signalHold - 1; // Cooldown before hiding local station info
 	signalHold = (signalHold <= 0) ? 0 : signalHold;
 	signalDim = (signalCalc >= SIGNAL_DIM_THRESHOLD) ? signalDimMax : signalDim - 1; // Cooldown before dimming logo
 	signalDim = (signalDim <= 0) ? 0 : signalDim;
@@ -1008,10 +1042,17 @@ function CheckPIorFreq() {
 			updateStationLogo(piCode, psCode);
 		} else if (INCLUDE_LOCAL_STATION_INFO && customStationName && signalHold) { // Local station info if signal is greater than SIGNAL_HOLD_THRESHOLD in dBm value
 			if (freqData !== previousfreqData) { logoLocal = false; }
-			if (signalCalc >= SIGNAL_HOLD_THRESHOLD) {
+			if (signalCalc >= SIGNAL_HOLD_THRESHOLD && cciValue <= CCI_HOLD_THRESHOLD) {
                 updateLocalStationInfo();
             } else {
                 localStationDelayCounter = 0;
+                // Prevent logo from previous antenna remaining if CCI is currently above threshold
+                if (logoLocal && getCurrentAntennaValue() !== logoLocalAntenna) {
+                    transitionLogoChange(logoImage, defaultImagePath, () => logoImage.attr('src', defaultImagePath).attr('alt', 'Default logo'));
+                    TXInfoField();
+                    logoLocal = false;
+                    signalHold = 0;
+                }
             }
 			logoPIPSVisible = false;
 		} else { // Default logo
@@ -1158,11 +1199,13 @@ function updateLocalStationInfo() {
 
     firstLocalstationRun = true;
     localStationDelayCounter++;
-    if (localStationDelayCounter <= localStationDelayCounterMax && !newAntenna) return;
+    const logoEl = logoImage && logoImage[0];
+    if (((localStationDelayCounter <= localStationDelayCounterMax) || (logoEl && isLogoTransitioning(logoEl))) && !newAntenna) return;
     localStationDelayCounter = 0;
 	if (window.matchMedia("(orientation: portrait)").matches) { mobileRefreshNew = 'p'; } else { mobileRefreshNew = 'l'; }
     if (!logoLocal || mobileRefresh !== mobileRefreshNew || newAntenna) {
 		logoLocal = true;
+		logoLocalAntenna = currentAntenna;
 		if (window.matchMedia("(orientation: portrait)").matches) { mobileRefresh = 'p'; } else { mobileRefresh = 'l'; }
 
 		// Force refresh when returning to station with PI+PS

@@ -1,5 +1,5 @@
 /*
-    Station Logos OCE + Station Info for no RDS v1.3.9 by AAD
+    Station Logos OCE + Station Info for no RDS v1.4.0 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugins
 
     //// Server-side code ////

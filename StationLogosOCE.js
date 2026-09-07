@@ -1,7 +1,7 @@
 // Plugin configuration, this is used in the administration when plugins are loaded
 var pluginConfig = {
     name: 'Station Logos OCE',
-    version: '1.3.9',
+    version: '1.4.0',
     author: 'AAD',
     frontEndPath: 'StationLogosOCE/pluginStationLogosOCE.js'
 }
