@@ -13,8 +13,8 @@
 
 const INCLUDE_LOCAL_STATION_INFO = true;        // Set to false to disable displaying localstationdata.json info
 const DELAY_LOCAL_STATION_INFO = true;          // Enable to instantly display local station info and disregard signal strength stabilising first
-const PRIORITISE_SVG = true;                    // Display 'svg' file if both 'svg' and 'webp' files exist for tuned station
-const PRIORITISE_SVG_LOCAL = false;             // Display 'svg' file if both 'svg' and 'png' files exist for tuned station (for stations without RDS)
+const PRIORITISE_SVG = true;                    // Display 'svg' file if both 'svg' and 'webp/png' files exist for tuned station
+const PRIORITISE_SVG_LOCAL = false;             // Display 'svg' file if both 'svg' and 'webp/png' files exist for tuned station (for stations without RDS)
 const LOGO_EFFECT = 'fade-animation';           // imageRotate, curtain, fade-animation, fade-grayscale
 const LOGO_TRANSITION_EFFECT = 'fade';          // none, flip, flip-vertical, fade, slide, zoom, blur
 const SIGNAL_DIM_THRESHOLD = -103;              // Value in dBm
